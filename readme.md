@@ -1,6 +1,6 @@
 # FoundationStereo: Zero-Shot Stereo Matching
 
-This is the official implementation of our paper accepted by CVPR 2025 Oral (**Best Paper Nomination**)
+This is the official implementation of our paper accepted by CVPR 2025 (**All strong accept**)
 
 [[Website]](https://nvlabs.github.io/FoundationStereo/) [[Paper]](https://arxiv.org/abs/2501.09898) [[Video]](https://www.youtube.com/watch?v=R7RgHxEXB3o)
 
@@ -20,14 +20,6 @@ Tremendous progress has been made in deep stereo matching to excel on benchmark 
   <img src="./teaser/input_output.gif" width="600"/>
 </p>
 
-# Changelog
-| Date       | Description                                                                                                         |
-|------------|---------------------------------------------------------------------------------------------------------------------|
-| 2025/12/15 | Checkout our real-time model [Fast-FoundationStereo](https://nvlabs.github.io/Fast-FoundationStereo/)
-| 2025/08/05 | Our commercial model is available now at [here](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/models/foundationstereo)! |
-| 2025/07/03 | Improve ONNX and TRT support. Add support for Jetson                                                                |
-
-
 # Leaderboards 🏆
 We obtained the 1st place on the world-wide [Middlebury leaderboard](https://vision.middlebury.edu/stereo/eval3/) and [ETH3D leaderboard](https://www.eth3d.net/low_res_two_view).
 
@@ -46,31 +38,18 @@ Our method outperforms existing approaches in zero-shot stereo matching tasks ac
 </p>
 
 # Installation
-
-We've tested on Linux with GPU 3090, 4090, A100, V100, Jetson Orin. Other GPUs should also work, but make sure you have enough memory
-
 ```
 conda env create -f environment.yml
-conda run -n foundation_stereo pip install flash-attn
 conda activate foundation_stereo
 ```
 
-Note that `flash-attn` needs to be installed separately to avoid [errors during environment creation](https://github.com/NVlabs/FoundationStereo/issues/20).
-
-
 # Model Weights
-- Download the foundation model for zero-shot inference on your data. Put the entire folder (e.g. `23-51-11`) under `./pretrained_models/`.
+- Download the foundation model for zero-shot inference on your data from [here](https://drive.google.com/drive/folders/1VhPebc_mMxWKccrv7pdQLTvXYVcLYpsf?usp=sharing). Put the entire folder (e.g. `23-51-11`) under `./pretrained_models/`.
 
-
-| Model     | Description                                                                 |
-|-----------|-----------------------------------------------------------------------------|
-| [23-51-11](https://drive.google.com/drive/folders/1VhPebc_mMxWKccrv7pdQLTvXYVcLYpsf?usp=sharing)  | Our best performing model for general use, based on Vit-large               |
-| [11-33-40](https://drive.google.com/drive/folders/1VhPebc_mMxWKccrv7pdQLTvXYVcLYpsf?usp=sharing)  | Slightly lower accuracy but faster inference, based on Vit-small            |
-| [NVIDIA-TAO](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/models/foundationstereo)       | For commercial usage (adapted from Vit-small model)                 |
 
 # Run demo
 ```
-python scripts/run_demo.py --left_file ./assets/left.png --right_file ./assets/right.png --ckpt_dir ./pretrained_models/23-51-11/model_best_bp2.pth --out_dir ./test_outputs/
+python scripts/run_demo.py --left_file ./assets/left.png --right_file ./assets/right.png --ckpt_dir ./pretrained_models/model_best_bp2.pth --out_dir ./test_outputs/
 ```
 You can see output point cloud.
 
@@ -85,56 +64,29 @@ Tips:
 - Our method works best on stereo RGB images. However, we have also tested it on monochrome or IR stereo images (e.g. from RealSense D4XX series) and it works well too.
 - For all options and instructions, check by `python scripts/run_demo.py --help`
 - To get point cloud for your own data, you need to specify the intrinsics. In the intrinsic file in args, 1st line is the flattened 1x9 intrinsic matrix, 2nd line is the baseline (distance) between the left and right camera, unit in meters.
-- For high-resolution image (>1000px), you can either (1) run with `--hiera 1` to enable hierarchical inference to get full resolution depth but slower; or (2) run with smaller scale, e.g. `--scale 0.5` to get downsized resolution depth but faster.
+- For high-resolution image (>1000px), you can run with `--hiera 1` to enable hierarchical inference for better performance.
 - For faster inference, you can reduce the input image resolution by e.g. `--scale 0.5`, and reduce refine iterations by e.g. `--valid_iters 16`.
 
 
 
-# ONNX/TensorRT(TRT) Inference
-
-We only support docker setup for ONNX/TRT version.
-
-- Build docker (tested on NVIDIA Driver Version: 560.35.03, CUDA Version: 12.6)
-```bash
-export DIR=$(pwd)
-cd docker && docker build --network host -t foundation_stereo .
-bash run_container.sh
-cd /
-git clone https://github.com/onnx/onnx-tensorrt.git
-cd onnx-tensorrt
-python3 setup.py install
-apt-get install -y libnvinfer-dispatch10 libnvinfer-bin tensorrt
-cd $DIR
-```
-
+# ONNX/TensorRT Inference (Experimental)
+To create ONNX models:
+- Make [this change](https://github.com/NVlabs/FoundationStereo/issues/13#issuecomment-2708791825) to replace flash-attention
 
 - Make ONNX:
 ```
-XFORMERS_DISABLED=1 python scripts/make_onnx.py --save_path ./pretrained_models/foundation_stereo.onnx --ckpt_dir ./pretrained_models/23-51-11/model_best_bp2.pth --height 448 --width 672 --valid_iters 20
+export XFORMERS_DISABLED=1
+python scripts/make_onnx.py --save_path ./output/foundation_stereo.onnx --ckpt_dir ./pretrained_models/23-51-11/model_best_bp2.pth --height 480 --width 640 --valid_iters 22
 ```
-
-- Convert to TRT:
+- Convert ONNX to TensorRT:
 ```
-trtexec --onnx=pretrained_models/foundation_stereo.onnx --verbose --saveEngine=pretrained_models/foundation_stereo.plan --fp16
-```
-
-- Run TRT:
-```
-python scripts/run_demo_tensorrt.py \
-        --left_img ${PWD}/assets/left.png \
-        --right_img ${PWD}/assets/right.png \
-        --save_path ${PWD}/output \
-        --pretrained pretrained_models/foundation_stereo.plan \
-        --height 448 \
-        --width 672 \
-        --pc \
-        --z_far 100.0
+trtexec --onnx=./output/foundation_stereo.onnx --saveEngine=./output/foundation_stereo.engine --fp16 --verbose
 ```
 
 We have observed 6X speed on the same GPU 3090 with TensorRT FP16. Although how much it speeds up depends on various factors, we recommend trying it out if you care about faster inference. Also remember to adjust the args setting based on your need.
 
-# Running on Jetson
-Please refer to [readme_jetson.md](readme_jetson.md).
+This feature is experimental as of now and contributions are welcome!
+
 
 # FSD Dataset
 <p align="center">
@@ -155,15 +107,12 @@ It will produce:
   <img src="./teaser/fsd_sample.png" width="800"/>
 </p>
 
-For dataset license, please check [this](https://github.com/NVlabs/FoundationStereo/blob/master/LICENSE).
+
 
 
 # FAQ
 - Q: Conda install does not work for me?<br>
   A: Check [this](https://github.com/NVlabs/FoundationStereo/issues/20)
-
-- Q: I'm not getting point cloud or getting incomplete point cloud?<br>
-  A: Check the flags in argparse about point cloud processing, such as `--z_far`, `--remove_invisible`, `--denoise_cloud`.
 
 - Q: My GPU doesn't support Flash attention?<br>
   A: See [this](https://github.com/NVlabs/FoundationStereo/issues/13#issuecomment-2708791825)
@@ -172,16 +121,7 @@ For dataset license, please check [this](https://github.com/NVlabs/FoundationSte
   A: This may indicate OOM issue. Try reducing your image resolution or use a GPU with more memory.
 
 - Q: How to run with RealSense?<br>
-  A: See [this](https://github.com/NVlabs/FoundationStereo/issues/26) and [this](https://github.com/NVlabs/FoundationStereo/issues/80)
-
-- Q: I have two or multiple RGB cameras, can I run this? <br>
-  A: You can first rectify a pair of images using this [OpenCV function](https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html#ga617b1685d4059c6040827800e72ad2b6) into stereo image pair (now they don't have relative rotations), then feed into FoundationStereo.
-
-- Q: How to run on Windows? <br>
-  A: See [this](https://github.com/NVlabs/FoundationStereo/issues/219).
-
-- Q: Can I use it for commercial purpose? <br>
-  A: We released a commercial version [here](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/models/foundationstereo). You can also drop me an email at bowenw@nvidia.com for further inquiries.
+  A: See [this](https://github.com/NVlabs/FoundationStereo/issues/26)
 
 
 # BibTeX
@@ -199,4 +139,4 @@ We would like to thank Gordon Grigor, Jack Zhang, Karsten Patzwaldt, Hammad Mazh
 
 
 # Contact
-For commercial inquiries, additional technical support, and other questions, please reach out to [Bowen Wen](https://wenbowen123.github.io/) (bowenw@nvidia.com).
+For questions, please reach out to [Bowen Wen](https://wenbowen123.github.io/) (bowenw@nvidia.com).
